@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type { CSSProperties, DragEvent, FormEvent, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -21,13 +21,15 @@ import {
   Link2,
   Loader2,
   Minus,
+  Monitor,
+  Moon,
   Pencil,
   Plus,
   RefreshCcw,
   RotateCcw,
-  Search,
   Send,
   Settings,
+  Sun,
   Tag,
   Trash2,
   X,
@@ -38,6 +40,7 @@ type RepeatRule = "none" | "monthly" | "quarterly" | "yearly" | "customDays";
 type DashboardFilter = "active" | "all" | "within30" | "overdue" | "archived";
 type ExpiryInputMode = "remainingDays" | "date";
 type EditorMode = "add" | "edit";
+type ThemePreference = "system" | "light" | "dark";
 
 interface CountdownItem {
   id: string;
@@ -112,6 +115,8 @@ const EMPTY_PATHS: DataPaths = {
   settingsFile: "browser-preview/settings.json",
 };
 
+const reminderPresets = [30, 14, 7, 3, 1, 0];
+
 const languageOptions: Array<{ value: AppLanguage; nativeName: string; locale: string }> = [
   { value: "zh-Hans", nativeName: "简体中文", locale: "zh-Hans-CN" },
   { value: "en", nativeName: "English", locale: "en-US" },
@@ -145,8 +150,10 @@ const copy = {
     categoryPlaceholder: "例如：订阅、证件、域名",
     close: "关闭",
     customDays: "自定义天数",
+    customReminderAdd: "添加提醒",
+    customReminderInput: "提前天数",
     customReminderOffsets: "自定义提醒天数",
-    customReminderOffsetsHelp: "将使用这些提醒天数：{offsets}。用逗号或空格分隔。",
+    customReminderOffsetsHelp: "已启用：{offsets}",
     data: "数据",
     dataRecoveredMessage: "检测到 items.json 损坏，已自动备份损坏文件，并从最近的有效备份恢复。",
     dataRecoveredTitle: "已恢复倒计时数据",
@@ -171,7 +178,7 @@ const copy = {
     launchAtLoginSubtitle: "登录系统后自动打开 Countdown",
     link: "链接",
     linkPlaceholder: "https://example.com",
-    manualHint: "拖动卡片或使用箭头调整顺序",
+    manualHint: "拖动卡片左侧圆点调整顺序",
     monthly: "每月",
     near: "临近",
     noItems: "还没有项目",
@@ -191,16 +198,19 @@ const copy = {
     restore: "恢复",
     runtimeCheck: "应用运行时检查到期项目",
     save: "保存",
-    searchPlaceholder: "搜索名称、备注、分类或链接",
     settings: "设置",
     sevenDaysBefore: "到期前 7 天",
     sevenDaysSubtitle: "剩余 7 天时推送项目名称",
     showBackup: "显示备份",
+    systemTheme: "系统",
     testFailed: "发送失败，请检查地址",
     testIdle: "发送一条测试消息",
     testPush: "测试推送",
     testSending: "发送中...",
     testSuccess: "已发送",
+    theme: "主题",
+    themeDark: "夜间",
+    themeLight: "白天",
     today: "今天",
     within30: "30天内",
     yearly: "每年",
@@ -224,8 +234,10 @@ const copy = {
     categoryPlaceholder: "e.g. Subscription, Document, Domain",
     close: "Close",
     customDays: "Custom days",
+    customReminderAdd: "Add reminder",
+    customReminderInput: "Days before",
     customReminderOffsets: "Custom reminder days",
-    customReminderOffsetsHelp: "Reminder days in use: {offsets}. Separate values with commas or spaces.",
+    customReminderOffsetsHelp: "Enabled: {offsets}",
     data: "Data",
     dataRecoveredMessage: "Countdown backed up a damaged items.json file and restored from the latest valid backup.",
     dataRecoveredTitle: "Countdown data restored",
@@ -250,7 +262,7 @@ const copy = {
     launchAtLoginSubtitle: "Open Countdown when you log in",
     link: "Link",
     linkPlaceholder: "https://example.com",
-    manualHint: "Drag cards or use arrows to adjust order",
+    manualHint: "Drag the handle on each card to adjust order",
     monthly: "Monthly",
     near: "Soon",
     noItems: "No items yet",
@@ -270,16 +282,19 @@ const copy = {
     restore: "Restore",
     runtimeCheck: "Check due items while the app is running",
     save: "Save",
-    searchPlaceholder: "Search name, note, category, or link",
     settings: "Settings",
     sevenDaysBefore: "7 days before",
     sevenDaysSubtitle: "Send the item name when 7 days remain",
     showBackup: "Show Backup",
+    systemTheme: "System",
     testFailed: "Failed. Check the URL",
     testIdle: "Send a test message",
     testPush: "Test push",
     testSending: "Sending...",
     testSuccess: "Sent",
+    theme: "Theme",
+    themeDark: "Dark",
+    themeLight: "Light",
     today: "Today",
     within30: "30 days",
     yearly: "Yearly",
@@ -300,8 +315,8 @@ function App() {
   const [paths, setPaths] = useState<DataPaths>(EMPTY_PATHS);
   const [recoveryNotice, setRecoveryNotice] = useState<RecoveryNotice | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchText, setSearchText] = useState("");
   const [filter, setFilter] = useState<DashboardFilter>("active");
+  const [themePreference, setThemePreference, effectiveTheme] = useThemePreference();
   const [manualOrder, setManualOrder] = usePersistentBoolean("countdown.manualOrder", false);
   const [sortAscending, setSortAscending] = usePersistentBoolean("countdown.sortAscending", true);
   const [editorState, setEditorState] = useState<{ mode: EditorMode; item?: CountdownItem } | null>(null);
@@ -344,9 +359,6 @@ function App() {
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      if (!matchesSearch(item, searchText)) {
-        return false;
-      }
       const days = remainingDays(item, now);
       if (filter === "active") return !item.isArchived;
       if (filter === "all") return true;
@@ -354,7 +366,7 @@ function App() {
       if (filter === "overdue") return !item.isArchived && days < 0;
       return item.isArchived;
     });
-  }, [filter, items, now, searchText]);
+  }, [filter, items, now]);
 
   const dashboardStats = useMemo(() => buildStats(filteredItems, now), [filteredItems, now]);
 
@@ -432,6 +444,14 @@ function App() {
     void commitItems(next);
   }
 
+  function handleCardDrop(targetId: string, event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (!draggedId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientY > bounds.top + bounds.height / 2 ? "after" : "before";
+    moveItem(draggedId, targetId, placement);
+  }
+
   async function openLink(url: string) {
     const trimmed = url.trim();
     if (!trimmed) return;
@@ -466,17 +486,8 @@ function App() {
   }
 
   return (
-    <main className="app-shell" lang={language}>
+    <main className={`app-shell theme-${effectiveTheme}`} lang={language} data-theme={effectiveTheme}>
       <section className="top-strip" aria-label="Dashboard filters">
-        <div className="search-box">
-          <Search size={16} aria-hidden />
-          <input
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            placeholder={text("searchPlaceholder", language)}
-          />
-        </div>
-
         <select className="filter-menu" value={filter} onChange={(event) => setFilter(event.target.value as DashboardFilter)}>
           {(["active", "all", "within30", "overdue", "archived"] as DashboardFilter[]).map((value) => (
             <option value={value} key={value}>
@@ -484,6 +495,8 @@ function App() {
             </option>
           ))}
         </select>
+
+        <ThemeSwitch preference={themePreference} language={language} onChange={setThemePreference} />
       </section>
 
       <section className="dashboard">
@@ -538,7 +551,7 @@ function App() {
                 draggedId={draggedId}
                 onDragStart={() => setDraggedId(item.id)}
                 onDragEnd={() => setDraggedId(null)}
-                onDropBefore={() => draggedId && moveItem(draggedId, item.id, "before")}
+                onDrop={(event) => handleCardDrop(item.id, event)}
                 onEdit={() => setEditorState({ mode: "edit", item })}
                 onDelete={() => removeItem(item)}
                 onArchive={() => patchItem(item, { isArchived: true })}
@@ -626,7 +639,7 @@ function CountdownCard(props: {
   draggedId: string | null;
   onDragStart: () => void;
   onDragEnd: () => void;
-  onDropBefore: () => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
   onEdit: () => void;
   onDelete: () => void;
   onArchive: () => void;
@@ -642,18 +655,28 @@ function CountdownCard(props: {
   return (
     <article
       className={`countdown-card ${urgency} ${isDragging ? "dragging" : ""}`}
-      draggable={props.manualOrder}
-      onDragStart={props.onDragStart}
-      onDragEnd={props.onDragEnd}
       onDragOver={(event) => props.manualOrder && event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        props.onDropBefore();
-      }}
+      onDrop={props.onDrop}
     >
       <button type="button" className="card-main" onClick={props.onEdit}>
         <div className="card-title-row">
-          {props.manualOrder ? <GripVertical size={16} aria-hidden /> : <CardIcon days={days} />}
+          {props.manualOrder ? (
+            <span
+              className="drag-handle"
+              draggable
+              title={text("adjust", props.language)}
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = "move";
+                props.onDragStart();
+              }}
+              onDragEnd={props.onDragEnd}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <GripVertical size={14} aria-hidden />
+            </span>
+          ) : (
+            <CardIcon days={days} />
+          )}
           <h2>{props.item.name}</h2>
         </div>
 
@@ -725,11 +748,12 @@ function ItemEditor(props: {
   const [category, setCategory] = useState(item?.category ?? "");
   const [link, setLink] = useState(item?.link ?? "");
   const [note, setNote] = useState(item?.note ?? "");
-  const [offsets, setOffsets] = useState((item?.reminderOffsets ?? [7, 0]).join(", "));
+  const [offsets, setOffsets] = useState<number[]>(normalizeOffsetList(item?.reminderOffsets ?? [7, 0]));
+  const [customOffset, setCustomOffset] = useState(14);
   const [repeatRule, setRepeatRule] = useState<RepeatRule>(item?.repeatRule ?? "none");
   const [repeatCustomDays, setRepeatCustomDays] = useState(item?.repeatCustomDays ?? 30);
   const [isArchived, setIsArchived] = useState(item?.isArchived ?? false);
-  const parsedOffsets = normalizeOffsets(offsets);
+  const parsedOffsets = normalizeOffsetList(offsets);
   const expiryIso = inputMode === "date" ? isoFromDateInput(dateValue) : isoFromRemainingDays(remaining);
   const previewDays = daysUntilIso(expiryIso);
 
@@ -828,9 +852,45 @@ function ItemEditor(props: {
 
         <label className="field-block">
           <span>{text("customReminderOffsets", props.language)}</span>
-          <div className="input-shell">
-            <Bell size={16} aria-hidden />
-            <input value={offsets} onChange={(event) => setOffsets(event.target.value)} placeholder="30, 7, 1, 0" />
+          <div className="reminder-picker">
+            <div className="reminder-chips" aria-label={text("customReminderOffsets", props.language)}>
+              {reminderPresets.map((days) => {
+                const selected = parsedOffsets.includes(days);
+                return (
+                  <button
+                    type="button"
+                    key={days}
+                    className={selected ? "selected" : ""}
+                    onClick={() => {
+                      setOffsets(selected ? parsedOffsets.filter((offset) => offset !== days) : normalizeOffsetList([...parsedOffsets, days]));
+                    }}
+                  >
+                    <Bell size={13} aria-hidden />
+                    {days === 0 ? text("today", props.language) : daysText(days, props.language)}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="custom-reminder-row">
+              <label>
+                <span>{text("customReminderInput", props.language)}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={3650}
+                  value={customOffset}
+                  onChange={(event) => setCustomOffset(clampNumber(event.target.valueAsNumber, 0, 3650))}
+                />
+              </label>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setOffsets(normalizeOffsetList([...parsedOffsets, customOffset]))}
+              >
+                <Plus size={14} aria-hidden />
+                {text("customReminderAdd", props.language)}
+              </button>
+            </div>
           </div>
           <small>{text("customReminderOffsetsHelp", props.language).replace("{offsets}", parsedOffsets.join(", "))}</small>
         </label>
@@ -1004,6 +1064,30 @@ function ControlButton(props: { icon: ReactNode; label: string; selected?: boole
   );
 }
 
+function ThemeSwitch(props: { preference: ThemePreference; language: AppLanguage; onChange: (preference: ThemePreference) => void }) {
+  const options: Array<{ value: ThemePreference; label: string; icon: ReactNode }> = [
+    { value: "system", label: text("systemTheme", props.language), icon: <Monitor size={13} aria-hidden /> },
+    { value: "light", label: text("themeLight", props.language), icon: <Sun size={13} aria-hidden /> },
+    { value: "dark", label: text("themeDark", props.language), icon: <Moon size={13} aria-hidden /> },
+  ];
+  return (
+    <div className="theme-switch" aria-label={text("theme", props.language)}>
+      {options.map((option) => (
+        <button
+          type="button"
+          key={option.value}
+          className={props.preference === option.value ? "selected" : ""}
+          onClick={() => props.onChange(option.value)}
+          title={option.label}
+        >
+          {option.icon}
+          <span>{option.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function IconButton(props: { children: ReactNode; label: string; danger?: boolean; onClick: () => void }) {
   return (
     <button type="button" className={`icon-button ${props.danger ? "danger" : ""}`} aria-label={props.label} title={props.label} onClick={props.onClick}>
@@ -1049,6 +1133,31 @@ function usePersistentBoolean(key: string, fallback: boolean): [boolean, (value:
       setValue(next);
     },
   ];
+}
+
+function useThemePreference(): [ThemePreference, (value: ThemePreference) => void, "light" | "dark"] {
+  const readPreference = () => {
+    const stored = localStorage.getItem("countdown.themePreference");
+    return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+  };
+  const systemTheme = () => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const [preference, setPreference] = useState<ThemePreference>(readPreference);
+  const [resolvedSystem, setResolvedSystem] = useState<"light" | "dark">(systemTheme);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setResolvedSystem(query.matches ? "dark" : "light");
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  function updatePreference(next: ThemePreference) {
+    localStorage.setItem("countdown.themePreference", next);
+    setPreference(next);
+  }
+
+  return [preference, updatePreference, preference === "system" ? resolvedSystem : preference];
 }
 
 function text(key: string, language: AppLanguage) {
@@ -1123,18 +1232,10 @@ function buildStats(items: CountdownItem[], now: Date) {
   };
 }
 
-function matchesSearch(item: CountdownItem, query: string) {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return [item.name, item.note, item.category, item.link].some((value) => value.toLowerCase().includes(q));
-}
-
-function normalizeOffsets(value: string) {
-  const values = value
-    .split(/[\s,，]+/)
-    .map((part) => Number.parseInt(part, 10))
+function normalizeOffsetList(offsets: number[]) {
+  const values = offsets
     .filter((part) => Number.isFinite(part))
-    .map((part) => Math.max(0, Math.min(3650, part)));
+    .map((part) => Math.max(0, Math.min(3650, Math.round(part))));
   const unique = [...new Set(values)].sort((a, b) => b - a);
   return unique.length ? unique : [7, 0];
 }

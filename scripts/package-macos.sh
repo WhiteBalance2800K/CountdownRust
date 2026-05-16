@@ -8,7 +8,7 @@ npm run tauri -- build --bundles app
 
 OUT_DIR="$ROOT_DIR/dist-packages/macos"
 APP_PATH="$ROOT_DIR/src-tauri/target/release/bundle/macos/Countdown.app"
-ZIP_PATH="$OUT_DIR/Countdown-v0.8-macOS.zip"
+ZIP_PATH="$OUT_DIR/Countdown-v0.9-macOS.zip"
 
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
