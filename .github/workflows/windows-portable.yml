@@ -1,0 +1,61 @@
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/windows-portable.yml"
+      - "index.html"
+      - "package-lock.json"
+      - "package.json"
+      - "scripts/package-windows-portable.ps1"
+      - "src/**"
+      - "src-tauri/**"
+      - "tsconfig*.json"
+      - "vite.config.ts"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  windows-portable:
+    name: Windows portable package
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build portable zip
+        shell: pwsh
+        run: npm run package:windows
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Countdown-v0.8-windows-portable
+          path: dist-packages/windows/Countdown-v0.8-windows-portable.zip
+          if-no-files-found: error

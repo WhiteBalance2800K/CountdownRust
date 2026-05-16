@@ -1,0 +1,32 @@
+{
+  "name": "countdown-rust",
+  "private": true,
+  "version": "0.8.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "npm run build && cargo test --manifest-path src-tauri/Cargo.toml",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "check": "npm run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "package:macos": "bash scripts/package-macos.sh",
+    "package:linux": "bash scripts/package-linux-appimage.sh",
+    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/package-windows-portable.ps1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "lucide-react": "^1.16.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}
