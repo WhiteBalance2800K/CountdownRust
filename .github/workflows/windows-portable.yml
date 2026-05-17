@@ -22,6 +22,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   windows-portable:
     name: Windows portable package
@@ -62,3 +65,31 @@ jobs:
           name: Countdown-v0.9-windows-portable
           path: dist-packages/windows/Countdown-v0.9-windows-portable.zip
           if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $minor = $version -replace '\.0$', ''
+          $asset = "dist-packages/windows/Countdown-v$minor-windows-portable.zip"
+          $notes = @"
+          ## 下载
+
+          - Windows portable: Countdown-v$minor-windows-portable.zip
+
+          ## 验证
+
+          - GitHub Actions: Build Windows Portable 通过
+          - Commit: ${{ github.sha }}
+          "@
+
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --repo "${{ github.repository }}" --clobber
+          } else {
+            gh release create $tag $asset --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Countdown $tag" --notes $notes
+          }
