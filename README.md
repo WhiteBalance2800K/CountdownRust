@@ -7,13 +7,14 @@ Countdown Rust 是一个使用 Slint + Rust 重构的跨平台原生桌面倒计
 - 到期日、续费日、deadline、周期事项追踪
 - 新增、编辑、删除、归档、恢复、一键续期
 - 按剩余天数录入
+- 卡片圆环显示倒计时进度，并按逾期、临近、将到期、正常分类着色
 - 备注、分类、链接、预设和自定义提醒天数
 - 进行中/全部/30 天内/已过期/已归档筛选
 - 手动上移/下移排序、临近排序
 - 自动跟随系统明暗主题，也可以手动切换白天/夜间
 - Bark 到期提醒和测试推送
 - 启动项开关、本地数据文件夹入口
-- UTF-8 中文界面，避免乱码
+- 内置 Noto Sans SC，UTF-8 中文界面，避免乱码
 
 ## 数据位置
 
@@ -56,3 +57,7 @@ scripts/package-linux-appimage.sh
 ```
 
 跨平台打包需要在对应系统上执行。Windows portable 包是单独的 `Countdown.exe` zip；Linux 当前选择 tar.gz portable 分发形式。
+
+## 字体许可
+
+应用内置的 Noto Sans SC 字体来自 Google Fonts，采用 SIL Open Font License 1.1，许可文件位于 `app/assets/fonts/OFL-Noto-Sans-SC.txt`。

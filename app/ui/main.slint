@@ -1,4 +1,5 @@
 import { Button, LineEdit, ComboBox, CheckBox, ListView } from "std-widgets.slint";
+import "../assets/fonts/NotoSansSC[wght].ttf";
 
 export struct UiItem {
     id: string,
@@ -11,29 +12,86 @@ export struct UiItem {
     repeat: string,
     urgent: bool,
     warning: bool,
+    status: int,
+    status-label: string,
+    ring-path: string,
 }
 
 component StatPill inherits Rectangle {
     in property <string> value;
     in property <string> label;
     in property <brush> tone;
-    in property <brush> surface1;
+    in property <brush> surface;
     in property <brush> line;
     in property <brush> muted;
-    border-radius: 9px;
-    background: surface1;
+    border-radius: 8px;
+    background: surface;
     border-color: line;
     border-width: 1px;
-    width: 66px;
+    width: 74px;
     height: 48px;
+
     VerticalLayout {
         padding-left: 10px;
         padding-right: 10px;
         padding-top: 6px;
         padding-bottom: 6px;
         spacing: 1px;
-        Text { text: value; color: tone; font-size: 17px; font-weight: 800; }
-        Text { text: label; color: muted; font-size: 11px; }
+        Text { text: value; color: tone; font-size: 17px; font-weight: 800; horizontal-alignment: center; }
+        Text { text: label; color: muted; font-size: 11px; horizontal-alignment: center; }
+    }
+}
+
+component Ring inherits Rectangle {
+    in property <string> days;
+    in property <string> label;
+    in property <string> ring-path;
+    in property <brush> tone;
+    in property <brush> track;
+    in property <brush> text-color;
+    in property <brush> muted;
+    width: 70px;
+    height: 70px;
+    background: transparent;
+
+    Path {
+        width: 70px;
+        height: 70px;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: "M 50 8 A 42 42 0 1 1 50 92 A 42 42 0 1 1 50 8";
+        fill: transparent;
+        stroke: track;
+        stroke-width: 8px;
+        stroke-line-cap: round;
+    }
+    Path {
+        width: 70px;
+        height: 70px;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: ring-path;
+        fill: transparent;
+        stroke: tone;
+        stroke-width: 8px;
+        stroke-line-cap: round;
+    }
+    Text {
+        y: 18px;
+        width: 70px;
+        text: days;
+        color: text-color;
+        font-size: 20px;
+        font-weight: 800;
+        horizontal-alignment: center;
+    }
+    Text {
+        y: 42px;
+        width: 70px;
+        text: label;
+        color: muted;
+        font-size: 10px;
+        horizontal-alignment: center;
     }
 }
 
@@ -41,22 +99,26 @@ component Card inherits Rectangle {
     in property <UiItem> item;
     in property <int> index;
     in property <bool> selected;
-    in property <brush> surface1;
+    in property <brush> surface;
     in property <brush> surface2;
-    in property <brush> selectedSurface;
+    in property <brush> selected-surface;
     in property <brush> line;
-    in property <brush> textColor;
+    in property <brush> text-color;
     in property <brush> muted;
     in property <brush> faint;
     in property <brush> accent;
-    in property <brush> warningColor;
+    in property <brush> safe;
+    in property <brush> soon;
+    in property <brush> warning-color;
     in property <brush> danger;
     callback clicked(int);
-    height: 96px;
+
+    property <brush> tone: item.status == 0 ? danger : item.status == 1 ? warning-color : item.status == 2 ? soon : item.status == 3 ? safe : faint;
+    height: 92px;
     border-radius: 12px;
     border-width: 1px;
-    border-color: selected ? accent : item.urgent ? danger : item.warning ? warningColor : line;
-    background: selected ? selectedSurface : surface1;
+    border-color: selected ? accent : line;
+    background: selected ? selected-surface : surface;
 
     TouchArea { clicked => { root.clicked(index); } }
 
@@ -67,48 +129,56 @@ component Card inherits Rectangle {
         padding-bottom: 10px;
         spacing: 12px;
 
+        Ring {
+            days: item.days-text;
+            label: item.status-label;
+            ring-path: item.ring-path;
+            tone: root.tone;
+            track: root.surface2;
+            text-color: root.text-color;
+            muted: root.faint;
+        }
+
         VerticalLayout {
-            spacing: 4px;
+            spacing: 5px;
             HorizontalLayout {
                 spacing: 8px;
-                Text { text: item.archived ? "□" : "▣"; color: accent; font-size: 13px; }
-                Text { text: item.name; color: textColor; font-size: 15px; font-weight: 800; overflow: elide; }
+                Text { text: item.name; color: text-color; font-size: 15px; font-weight: 800; overflow: elide; }
+                if item.archived: Text { text: "归档"; color: faint; font-size: 11px; }
             }
             Text { text: item.date; color: muted; font-size: 12px; }
+            if item.note != "": Text { text: item.note; color: faint; font-size: 11px; overflow: elide; }
             HorizontalLayout {
-                spacing: 6px;
-                if item.category != "": Rectangle {
-                    height: 20px;
-                    border-radius: 10px;
-                    background: surface2;
-                    Text { x: 8px; y: 2px; text: item.category; color: muted; font-size: 10px; }
-                }
-                if item.repeat != "": Rectangle {
-                    height: 20px;
-                    border-radius: 10px;
-                    background: surface2;
-                    Text { x: 8px; y: 2px; text: item.repeat; color: muted; font-size: 10px; }
-                }
+                spacing: 8px;
+                Text { text: item.category == "" ? "未分类" : item.category; color: muted; font-size: 11px; overflow: elide; }
+                if item.repeat != "": Text { text: item.repeat; color: muted; font-size: 11px; }
             }
         }
 
-        Rectangle { width: 1px; background: transparent; }
-        VerticalLayout {
-            alignment: center;
-            Text { horizontal-alignment: right; text: item.days-text; color: item.urgent ? danger : item.warning ? warningColor : textColor; font-size: 30px; font-weight: 800; }
-            Text { horizontal-alignment: right; text: item.urgent ? "临近" : item.warning ? "30天内" : "剩余"; color: faint; font-size: 11px; }
+        Rectangle {
+            width: 5px;
+            border-radius: 3px;
+            background: root.tone;
         }
     }
 }
 
+component SectionTitle inherits Text {
+    in property <brush> tone;
+    color: tone;
+    font-size: 17px;
+    font-weight: 800;
+}
+
 export component MainWindow inherits Window {
-    title: "Countdown";
-    width: 920px;
+    title: "倒计时";
+    width: 980px;
     height: 760px;
+    default-font-family: "Noto Sans SC";
 
     in property <[UiItem]> items;
     in property <int> selected-index: -1;
-    in property <string> title-text: "Countdown";
+    in property <string> title-text: "倒计时";
     in property <string> total-count: "0";
     in property <string> soon-count: "0";
     in property <string> overdue-count: "0";
@@ -117,6 +187,7 @@ export component MainWindow inherits Window {
     in property <bool> system-dark-mode: false;
     property <bool> dark-mode: theme-mode == 2 || (theme-mode == 0 && system-dark-mode);
     in-out property <int> filter-index: 0;
+    in-out property <int> panel-mode: 0;
     in-out property <string> name-input;
     in-out property <string> days-input: "30";
     in-out property <string> category-input;
@@ -143,17 +214,19 @@ export component MainWindow inherits Window {
     callback test-push();
     callback theme-changed(int);
 
-    property <brush> canvas: dark-mode ? #090908 : #f4f2ed;
-    property <brush> surface1: dark-mode ? #151513 : #fffdfa;
-    property <brush> surface2: dark-mode ? #22221f : #ebe7de;
-    property <brush> selectedSurface: dark-mode ? #241b12 : #fff2e4;
-    property <brush> line: dark-mode ? #33332f : #d7d0c0;
-    property <brush> text: dark-mode ? #eee9df : #242520;
-    property <brush> muted: dark-mode ? #aaa39a : #696458;
-    property <brush> faint: dark-mode ? #777069 : #938c80;
+    property <brush> canvas: dark-mode ? #11110f : #f5f3ee;
+    property <brush> surface: dark-mode ? #1b1b18 : #fffdf8;
+    property <brush> surface2: dark-mode ? #292923 : #ebe6da;
+    property <brush> selected-surface: dark-mode ? #272116 : #fff0dc;
+    property <brush> line: dark-mode ? #383832 : #d8d0c0;
+    property <brush> text-color: dark-mode ? #f0ece2 : #24241f;
+    property <brush> muted: dark-mode ? #aca59a : #675f54;
+    property <brush> faint: dark-mode ? #817a70 : #958b7d;
     property <brush> accent: #d66a13;
-    property <brush> warning: dark-mode ? #ffd166 : #a77408;
-    property <brush> danger: dark-mode ? #ff6656 : #c94337;
+    property <brush> safe: dark-mode ? #58d68d : #14815a;
+    property <brush> soon: dark-mode ? #70d6ff : #217c9b;
+    property <brush> warning-color: dark-mode ? #ffd166 : #a87405;
+    property <brush> danger: dark-mode ? #ff6b5f : #c83f32;
 
     background: canvas;
 
@@ -163,105 +236,137 @@ export component MainWindow inherits Window {
 
         VerticalLayout {
             spacing: 12px;
-            width: 560px;
+            width: 620px;
 
             HorizontalLayout {
-                height: 36px;
+                height: 42px;
+                spacing: 8px;
                 ComboBox {
-                    width: 132px;
-                    model: ["进行中", "全部", "30天内", "已过期", "归档"];
+                    width: 136px;
+                    model: ["进行中", "全部", "30 天内", "已过期", "已归档"];
                     current-index: root.filter-index;
                     selected(value) => { root.filter-changed(self.current-index); }
                 }
+                Button { text: "新建"; clicked => { root.add-item(); } }
+                Button { text: "保存"; clicked => { root.save-item(); } }
                 Rectangle { background: transparent; }
-                ComboBox {
-                    width: 116px;
-                    model: ["自动", "白天", "夜间"];
-                    current-index: root.theme-mode;
-                    selected(value) => { root.theme-changed(self.current-index); }
-                }
+                Text { text: root.toast; color: root.accent; font-size: 12px; vertical-alignment: center; overflow: elide; }
             }
 
             HorizontalLayout {
-                height: 64px;
+                height: 70px;
+                spacing: 12px;
                 VerticalLayout {
-                    Text { text: "COUNTDOWN"; color: root.accent; font-size: 12px; font-weight: 800; }
-                    Text { text: root.title-text; color: root.text; font-size: 32px; font-weight: 800; overflow: elide; }
+                    Text { text: "最近关注"; color: root.accent; font-size: 12px; font-weight: 800; }
+                    Text { text: root.title-text; color: root.text-color; font-size: 31px; font-weight: 800; overflow: elide; }
                 }
-                StatPill { value: root.total-count; label: "全部"; tone: root.text; surface1: root.surface1; line: root.line; muted: root.muted; }
-                StatPill { value: root.soon-count; label: "30天内"; tone: root.warning; surface1: root.surface1; line: root.line; muted: root.muted; }
-                StatPill { value: root.overdue-count; label: "已过期"; tone: root.danger; surface1: root.surface1; line: root.line; muted: root.muted; }
+                StatPill { value: root.total-count; label: "总数"; tone: root.text-color; surface: root.surface; line: root.line; muted: root.muted; }
+                StatPill { value: root.soon-count; label: "30天内"; tone: root.warning-color; surface: root.surface; line: root.line; muted: root.muted; }
+                StatPill { value: root.overdue-count; label: "逾期"; tone: root.danger; surface: root.surface; line: root.line; muted: root.muted; }
             }
 
             ListView {
-                height: 516px;
+                height: 580px;
                 for item[index] in root.items: Card {
                     item: item;
                     index: index;
                     selected: index == root.selected-index;
-                    surface1: root.surface1;
+                    surface: root.surface;
                     surface2: root.surface2;
-                    selectedSurface: root.selectedSurface;
+                    selected-surface: root.selected-surface;
                     line: root.line;
-                    textColor: root.text;
+                    text-color: root.text-color;
                     muted: root.muted;
                     faint: root.faint;
                     accent: root.accent;
-                    warningColor: root.warning;
+                    safe: root.safe;
+                    soon: root.soon;
+                    warning-color: root.warning-color;
                     danger: root.danger;
                     clicked(index) => { root.select-item(index); }
                 }
             }
-
-            HorizontalLayout {
-                height: 44px;
-                spacing: 8px;
-                Button { text: "新增"; clicked => { root.add-item(); } }
-                Button { text: "保存"; clicked => { root.save-item(); } }
-                Button { text: "删除"; enabled: root.selected-index >= 0; clicked => { root.delete-item(); } }
-                Button { text: "归档/恢复"; enabled: root.selected-index >= 0; clicked => { root.archive-toggle(); } }
-                Button { text: "续期"; enabled: root.selected-index >= 0; clicked => { root.renew-item(); } }
-                Button { text: "上移"; enabled: root.selected-index > 0; clicked => { root.move-up(); } }
-                Button { text: "下移"; enabled: root.selected-index >= 0; clicked => { root.move-down(); } }
-                Button { text: "临近排序"; clicked => { root.sort-near(); } }
-            }
         }
 
         Rectangle {
-            width: 296px;
+            width: 306px;
             border-radius: 14px;
             border-width: 1px;
             border-color: root.line;
-            background: root.surface1;
+            background: root.surface;
 
             VerticalLayout {
                 padding: 14px;
                 spacing: 10px;
-                Text { text: "编辑"; color: root.text; font-size: 20px; font-weight: 800; }
-                Text { text: "名称"; color: root.muted; font-size: 12px; }
-                LineEdit { text <=> root.name-input; placeholder-text: "例如：会员续费、证件到期"; }
-                Text { text: "剩余天数"; color: root.muted; font-size: 12px; }
-                LineEdit { text <=> root.days-input; input-type: number; }
-                Text { text: "分类"; color: root.muted; font-size: 12px; }
-                LineEdit { text <=> root.category-input; placeholder-text: "订阅、证件、域名"; }
-                Text { text: "提醒天数"; color: root.muted; font-size: 12px; }
-                LineEdit { text <=> root.reminders-input; placeholder-text: "30, 7, 1, 0"; }
-                Text { text: "备注"; color: root.muted; font-size: 12px; }
-                LineEdit { text <=> root.note-input; placeholder-text: "备注"; }
-                CheckBox { text: "归档"; checked <=> root.archived-input; }
 
-                Rectangle { height: 1px; background: root.line; }
-                Text { text: "设置"; color: root.text; font-size: 18px; font-weight: 800; }
-                CheckBox { text: "启用 Bark 推送"; checked <=> root.push-enabled; }
-                LineEdit { text <=> root.bark-input; placeholder-text: "https://api.day.app/你的Key"; }
-                CheckBox { text: "开机启动"; checked <=> root.launch-at-login; }
                 HorizontalLayout {
-                    Button { text: "保存设置"; clicked => { root.save-settings(); } }
-                    Button { text: "测试推送"; clicked => { root.test-push(); } }
+                    height: 36px;
+                    SectionTitle { text: root.panel-mode == 0 ? "编辑卡片" : "设置"; tone: root.text-color; }
+                    ComboBox {
+                        width: 96px;
+                        model: ["编辑", "设置"];
+                        current-index: root.panel-mode;
+                        selected(value) => { root.panel-mode = self.current-index; }
+                    }
                 }
-                Button { text: "打开数据目录"; clicked => { root.open-data-dir(); } }
-                Text { text: root.data-dir; color: root.faint; font-size: 10px; wrap: word-wrap; }
-                Text { text: root.toast; color: root.accent; font-size: 12px; wrap: word-wrap; }
+
+                if root.panel-mode == 0: VerticalLayout {
+                    spacing: 9px;
+                    Text { text: "名称"; color: root.muted; font-size: 12px; }
+                    LineEdit { text <=> root.name-input; placeholder-text: "例如：会员续费、证件到期"; }
+                    Text { text: "剩余天数"; color: root.muted; font-size: 12px; }
+                    LineEdit { text <=> root.days-input; input-type: number; }
+                    Text { text: "分类"; color: root.muted; font-size: 12px; }
+                    LineEdit { text <=> root.category-input; placeholder-text: "订阅、证件、域名"; }
+                    Text { text: "提醒天数"; color: root.muted; font-size: 12px; }
+                    LineEdit { text <=> root.reminders-input; placeholder-text: "30, 7, 1, 0"; }
+                    Text { text: "备注"; color: root.muted; font-size: 12px; }
+                    LineEdit { text <=> root.note-input; placeholder-text: "备注"; }
+                    CheckBox { text: "归档"; checked <=> root.archived-input; }
+                    Button { text: "保存卡片"; clicked => { root.save-item(); } }
+                    Text { text: "选择左侧卡片后可编辑；新建后填写信息并保存。"; color: root.faint; font-size: 11px; overflow: elide; }
+                }
+
+                if root.panel-mode == 1: VerticalLayout {
+                    spacing: 9px;
+                    Text { text: "项目操作"; color: root.muted; font-size: 12px; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button { text: "上移"; enabled: root.selected-index > 0; clicked => { root.move-up(); } }
+                        Button { text: "下移"; enabled: root.selected-index >= 0; clicked => { root.move-down(); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button { text: "续期"; enabled: root.selected-index >= 0; clicked => { root.renew-item(); } }
+                        Button { text: "归档/恢复"; enabled: root.selected-index >= 0; clicked => { root.archive-toggle(); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button { text: "删除"; enabled: root.selected-index >= 0; clicked => { root.delete-item(); } }
+                        Button { text: "按临近排序"; clicked => { root.sort-near(); } }
+                    }
+
+                    Rectangle { height: 1px; background: root.line; }
+                    Text { text: "外观"; color: root.muted; font-size: 12px; }
+                    ComboBox {
+                        model: ["自动", "白天", "夜间"];
+                        current-index: root.theme-mode;
+                        selected(value) => { root.theme-changed(self.current-index); }
+                    }
+
+                    Rectangle { height: 1px; background: root.line; }
+                    Text { text: "提醒"; color: root.muted; font-size: 12px; }
+                    CheckBox { text: "启用 Bark 推送"; checked <=> root.push-enabled; }
+                    LineEdit { text <=> root.bark-input; placeholder-text: "https://api.day.app/你的Key"; }
+                    CheckBox { text: "开机启动"; checked <=> root.launch-at-login; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button { text: "保存设置"; clicked => { root.save-settings(); } }
+                        Button { text: "测试推送"; clicked => { root.test-push(); } }
+                    }
+                    Button { text: "打开数据目录"; clicked => { root.open-data-dir(); } }
+                    Text { text: root.data-dir; color: root.faint; font-size: 10px; overflow: elide; }
+                }
             }
         }
     }

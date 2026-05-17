@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "countdown"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "auto-launch",
  "chrono",

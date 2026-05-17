@@ -71,6 +71,7 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(item) = visible.get(index as usize) {
                 state.borrow_mut().selected_id = Some(item.id.to_string());
                 app.set_selected_index(index);
+                app.set_panel_mode(0);
                 fill_editor(&app, item);
             }
         });
@@ -91,6 +92,7 @@ fn main() -> Result<(), slint::PlatformError> {
             app.set_note_input("".into());
             app.set_reminders_input("7, 0".into());
             app.set_archived_input(false);
+            app.set_panel_mode(0);
             app.set_toast("准备新增项目".into());
         });
     }
@@ -455,9 +457,76 @@ fn to_ui_item(item: &CountdownItem) -> UiItem {
         note: item.note.clone().into(),
         archived: item.is_archived,
         repeat: repeat_label(item.repeat_rule).into(),
-        urgent: days < 15,
+        urgent: (0..15).contains(&days),
         warning: (15..=30).contains(&days),
+        status: item_status(item, days),
+        status_label: status_label(item, days).into(),
+        ring_path: ring_path(item, days).into(),
     }
+}
+
+fn item_status(item: &CountdownItem, days: i64) -> i32 {
+    if item.is_archived {
+        4
+    } else if days < 0 {
+        0
+    } else if days < 15 {
+        1
+    } else if days <= 30 {
+        2
+    } else {
+        3
+    }
+}
+
+fn status_label(item: &CountdownItem, days: i64) -> &'static str {
+    if item.is_archived {
+        "归档"
+    } else if days < 0 {
+        "逾期"
+    } else if days == 0 {
+        "今天"
+    } else if days < 15 {
+        "临近"
+    } else if days <= 30 {
+        "将到"
+    } else {
+        "剩余"
+    }
+}
+
+fn ring_path(item: &CountdownItem, days: i64) -> String {
+    let progress = countdown_progress(item, days);
+    arc_path(progress)
+}
+
+fn countdown_progress(item: &CountdownItem, days: i64) -> f64 {
+    if item.is_archived {
+        return 0.0;
+    }
+    if days <= 0 {
+        return 1.0;
+    }
+
+    let total = (item.expiry_date - item.created_at).num_days().max(1) as f64;
+    let remaining = days.max(0) as f64;
+    (1.0 - remaining / total).clamp(0.08, 0.96)
+}
+
+fn arc_path(progress: f64) -> String {
+    let progress = progress.clamp(0.0, 1.0);
+    if progress <= 0.0 {
+        return "M 50 8 L 50 8".to_string();
+    }
+    if progress >= 0.995 {
+        return "M 50 8 A 42 42 0 1 1 50 92 A 42 42 0 1 1 50 8".to_string();
+    }
+
+    let angle = -std::f64::consts::FRAC_PI_2 + progress * std::f64::consts::TAU;
+    let x = 50.0 + 42.0 * angle.cos();
+    let y = 50.0 + 42.0 * angle.sin();
+    let large_arc = if progress > 0.5 { 1 } else { 0 };
+    format!("M 50 8 A 42 42 0 {large_arc} 1 {x:.3} {y:.3}")
 }
 
 fn repeat_label(rule: RepeatRule) -> String {
