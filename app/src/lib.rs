@@ -1,5 +1,5 @@
 use auto_launch::AutoLaunchBuilder;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
@@ -8,7 +8,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const APP_NAME: &str = "Countdown";
+pub const APP_NAME: &str = "Countdown";
 const DATA_FILE: &str = "items.json";
 const SETTINGS_FILE: &str = "settings.json";
 const BACKUP_LIMIT: usize = 12;
@@ -17,33 +17,33 @@ const BACKUP_LIMIT: usize = 12;
 #[serde(rename_all = "camelCase")]
 pub struct CountdownItem {
     #[serde(default = "new_uuid")]
-    id: Uuid,
+    pub id: Uuid,
     #[serde(default)]
-    name: String,
+    pub name: String,
     #[serde(default = "now_utc")]
-    expiry_date: DateTime<Utc>,
+    pub expiry_date: DateTime<Utc>,
     #[serde(default = "now_utc")]
-    created_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
     #[serde(default = "now_utc")]
-    updated_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     #[serde(default)]
-    note: String,
+    pub note: String,
     #[serde(default = "default_reminder_offsets")]
-    reminder_offsets: Vec<i32>,
+    pub reminder_offsets: Vec<i32>,
     #[serde(default)]
-    category: String,
+    pub category: String,
     #[serde(default)]
-    link: String,
+    pub link: String,
     #[serde(default)]
-    is_archived: bool,
+    pub is_archived: bool,
     #[serde(default)]
-    repeat_rule: RepeatRule,
+    pub repeat_rule: RepeatRule,
     #[serde(default = "default_repeat_custom_days")]
-    repeat_custom_days: i32,
+    pub repeat_custom_days: i32,
 }
 
 impl CountdownItem {
-    fn normalized(mut self) -> Self {
+    pub fn normalized(mut self) -> Self {
         self.name = self.name.trim().to_string();
         self.note = self.note.trim().to_string();
         self.category = self.category.trim().to_string();
@@ -51,6 +51,25 @@ impl CountdownItem {
         self.reminder_offsets = normalize_reminder_offsets(&self.reminder_offsets);
         self.repeat_custom_days = self.repeat_custom_days.max(1);
         self
+    }
+
+    pub fn new(name: String, days: i64, category: String, note: String) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            expiry_date: utc_from_local_days(days),
+            created_at: now,
+            updated_at: now,
+            note,
+            reminder_offsets: default_reminder_offsets(),
+            category,
+            link: String::new(),
+            is_archived: false,
+            repeat_rule: RepeatRule::None,
+            repeat_custom_days: default_repeat_custom_days(),
+        }
+        .normalized()
     }
 }
 
@@ -70,17 +89,19 @@ pub enum RepeatRule {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     #[serde(default)]
-    push_enabled: bool,
+    pub push_enabled: bool,
     #[serde(default = "default_bark_address")]
-    bark_push_address: String,
+    pub bark_push_address: String,
     #[serde(default = "default_true")]
-    push_seven_days_enabled: bool,
+    pub push_seven_days_enabled: bool,
     #[serde(default = "default_true")]
-    push_due_day_enabled: bool,
+    pub push_due_day_enabled: bool,
     #[serde(default = "default_language")]
-    app_language: String,
+    pub app_language: String,
     #[serde(default)]
-    launch_at_login_enabled: bool,
+    pub launch_at_login_enabled: bool,
+    #[serde(default)]
+    pub theme_mode: i32,
 }
 
 impl Default for AppSettings {
@@ -92,6 +113,7 @@ impl Default for AppSettings {
             push_due_day_enabled: true,
             app_language: default_language(),
             launch_at_login_enabled: false,
+            theme_mode: 0,
         }
     }
 }
@@ -99,31 +121,30 @@ impl Default for AppSettings {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataPaths {
-    data_dir: String,
-    data_file: String,
-    backups_dir: String,
-    settings_file: String,
+    pub data_dir: String,
+    pub data_file: String,
+    pub backups_dir: String,
+    pub settings_file: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoveryNotice {
-    kind: String,
-    corrupted_backup_path: Option<String>,
-    restored_from_path: Option<String>,
+    pub kind: String,
+    pub corrupted_backup_path: Option<String>,
+    pub restored_from_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppData {
-    items: Vec<CountdownItem>,
-    settings: AppSettings,
-    paths: DataPaths,
-    recovery_notice: Option<RecoveryNotice>,
+    pub items: Vec<CountdownItem>,
+    pub settings: AppSettings,
+    pub paths: DataPaths,
+    pub recovery_notice: Option<RecoveryNotice>,
 }
 
-#[tauri::command]
-fn load_app_data() -> Result<AppData, String> {
+pub fn load_app_data() -> Result<AppData, String> {
     ensure_data_dirs()?;
     let (items, recovery_notice) = load_items_with_recovery()?;
     let mut settings = load_settings()?;
@@ -137,8 +158,7 @@ fn load_app_data() -> Result<AppData, String> {
     })
 }
 
-#[tauri::command]
-fn save_items(items: Vec<CountdownItem>) -> Result<Vec<CountdownItem>, String> {
+pub fn save_items(items: Vec<CountdownItem>) -> Result<Vec<CountdownItem>, String> {
     let normalized: Vec<CountdownItem> = items.into_iter().map(CountdownItem::normalized).collect();
     let bytes = serde_json::to_vec_pretty(&normalized).map_err(to_error)?;
     write_json_atomically(&data_file_path(), &bytes)?;
@@ -146,26 +166,22 @@ fn save_items(items: Vec<CountdownItem>) -> Result<Vec<CountdownItem>, String> {
     Ok(normalized)
 }
 
-#[tauri::command]
-fn save_settings(settings: AppSettings) -> Result<AppSettings, String> {
+pub fn save_settings(settings: AppSettings) -> Result<AppSettings, String> {
     ensure_data_dirs()?;
     let bytes = serde_json::to_vec_pretty(&settings).map_err(to_error)?;
     write_json_atomically(&settings_file_path(), &bytes)?;
     Ok(settings)
 }
 
-#[tauri::command]
-fn reveal_path(path: String) -> Result<(), String> {
+pub fn reveal_path(path: String) -> Result<(), String> {
     opener::open(path).map_err(to_error)
 }
 
-#[tauri::command]
-fn launch_at_login_status() -> Result<bool, String> {
+pub fn launch_at_login_status() -> Result<bool, String> {
     auto_launcher()?.is_enabled().map_err(to_error)
 }
 
-#[tauri::command]
-fn set_launch_at_login(enabled: bool) -> Result<bool, String> {
+pub fn set_launch_at_login(enabled: bool) -> Result<bool, String> {
     let launcher = auto_launcher()?;
     if enabled {
         launcher.enable().map_err(to_error)?;
@@ -175,8 +191,7 @@ fn set_launch_at_login(enabled: bool) -> Result<bool, String> {
     launcher.is_enabled().map_err(to_error)
 }
 
-#[tauri::command]
-async fn send_bark_push(
+pub fn send_bark_push(
     push_address: String,
     item_name: String,
     days_until_expiry: i64,
@@ -196,11 +211,11 @@ async fn send_bark_push(
         segments.push(&bark_body(&item_name, days_until_expiry, &language));
     }
 
-    let client = reqwest::Client::builder()
+    let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(to_error)?;
-    let response = client.get(url).send().await.map_err(to_error)?;
+    let response = client.get(url).send().map_err(to_error)?;
     if response.status().is_success() {
         Ok(())
     } else {
@@ -208,21 +223,68 @@ async fn send_bark_push(
     }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            load_app_data,
-            save_items,
-            save_settings,
-            reveal_path,
-            launch_at_login_status,
-            set_launch_at_login,
-            send_bark_push
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+pub fn remaining_days(item: &CountdownItem) -> i64 {
+    days_until(item.expiry_date)
+}
+
+pub fn days_until(expiry: DateTime<Utc>) -> i64 {
+    let today = Local::now().date_naive();
+    let expiry = expiry.with_timezone(&Local).date_naive();
+    (expiry - today).num_days()
+}
+
+pub fn format_date(expiry: DateTime<Utc>) -> String {
+    let date = expiry.with_timezone(&Local).date_naive();
+    format!("{}年{}月{}日", date.year(), date.month(), date.day())
+}
+
+pub fn utc_from_local_days(days: i64) -> DateTime<Utc> {
+    let date = Local::now().date_naive() + Duration::days(days.max(0));
+    let local = Local
+        .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+        .single()
+        .unwrap_or_else(Local::now);
+    local.with_timezone(&Utc)
+}
+
+pub fn next_renewed_item(item: &CountdownItem) -> Option<CountdownItem> {
+    if item.repeat_rule == RepeatRule::None {
+        return None;
+    }
+    let today = Local::now().date_naive();
+    let expiry = item.expiry_date.with_timezone(&Local).date_naive();
+    let base = if expiry > today { expiry } else { today };
+    let next = match item.repeat_rule {
+        RepeatRule::Monthly => add_months_clamped(base, 1),
+        RepeatRule::Quarterly => add_months_clamped(base, 3),
+        RepeatRule::Yearly => add_months_clamped(base, 12),
+        RepeatRule::CustomDays => base + Duration::days(item.repeat_custom_days.max(1) as i64),
+        RepeatRule::None => return None,
+    };
+    let local = Local
+        .with_ymd_and_hms(next.year(), next.month(), next.day(), 0, 0, 0)
+        .single()
+        .unwrap_or_else(Local::now);
+    let mut renewed = item.clone();
+    renewed.expiry_date = local.with_timezone(&Utc);
+    renewed.is_archived = false;
+    renewed.updated_at = Utc::now();
+    Some(renewed)
+}
+
+fn add_months_clamped(date: chrono::NaiveDate, months: u32) -> chrono::NaiveDate {
+    let month0 = date.month0() + months;
+    let year = date.year() + (month0 / 12) as i32;
+    let month = month0 % 12 + 1;
+    let last_day = last_day_of_month(year, month);
+    chrono::NaiveDate::from_ymd_opt(year, month, date.day().min(last_day)).unwrap_or(date)
+}
+
+fn last_day_of_month(year: i32, month: u32) -> u32 {
+    let next_month = if month == 12 { 1 } else { month + 1 };
+    let next_year = if month == 12 { year + 1 } else { year };
+    let first_next = chrono::NaiveDate::from_ymd_opt(next_year, next_month, 1).unwrap();
+    (first_next - Duration::days(1)).day()
 }
 
 fn load_items_with_recovery() -> Result<(Vec<CountdownItem>, Option<RecoveryNotice>), String> {
@@ -361,7 +423,7 @@ fn auto_launcher() -> Result<auto_launch::AutoLaunch, String> {
     builder.build().map_err(to_error)
 }
 
-fn data_paths() -> DataPaths {
+pub fn data_paths() -> DataPaths {
     DataPaths {
         data_dir: path_to_string(data_dir()),
         data_file: path_to_string(data_file_path()),
@@ -392,7 +454,10 @@ fn data_dir() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
         if let Some(home) = dirs::home_dir() {
-            return home.join("Library").join("Application Support").join(APP_NAME);
+            return home
+                .join("Library")
+                .join("Application Support")
+                .join(APP_NAME);
         }
     }
 
@@ -428,8 +493,11 @@ fn write_json_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn normalize_reminder_offsets(offsets: &[i32]) -> Vec<i32> {
-    let values: BTreeSet<i32> = offsets.iter().map(|value| (*value).clamp(0, 3650)).collect();
+pub fn normalize_reminder_offsets(offsets: &[i32]) -> Vec<i32> {
+    let values: BTreeSet<i32> = offsets
+        .iter()
+        .map(|value| (*value).clamp(0, 3650))
+        .collect();
     let mut sorted: Vec<i32> = values.into_iter().rev().collect();
     if sorted.is_empty() {
         sorted = default_reminder_offsets();
@@ -518,7 +586,13 @@ mod tests {
 
     #[test]
     fn keeps_swift_repeat_rule_names() {
-        assert_eq!(serde_json::to_string(&RepeatRule::CustomDays).unwrap(), "\"customDays\"");
-        assert_eq!(serde_json::to_string(&RepeatRule::None).unwrap(), "\"none\"");
+        assert_eq!(
+            serde_json::to_string(&RepeatRule::CustomDays).unwrap(),
+            "\"customDays\""
+        );
+        assert_eq!(
+            serde_json::to_string(&RepeatRule::None).unwrap(),
+            "\"none\""
+        );
     }
 }

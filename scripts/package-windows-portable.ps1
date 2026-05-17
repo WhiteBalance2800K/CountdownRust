@@ -3,15 +3,16 @@ $ErrorActionPreference = "Stop"
 $RootDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RootDir
 
-$Version = node -p "require('./package.json').version"
-$PackageVersion = $Version -replace '\.0$', ''
+$Manifest = Join-Path $RootDir "app\Cargo.toml"
+$VersionLine = Select-String -Path $Manifest -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1
+$Version = $VersionLine.Matches.Groups[1].Value
 
-npm run tauri -- build --no-bundle
+cargo build --manifest-path $Manifest --release
 
 $OutDir = Join-Path $RootDir "dist-packages\windows"
 $StageDir = Join-Path $OutDir "Countdown"
-$ExePath = Join-Path $RootDir "src-tauri\target\release\countdown.exe"
-$ZipPath = Join-Path $OutDir "Countdown-v$PackageVersion-windows-portable.zip"
+$ExePath = Join-Path $RootDir "app\target\release\countdown.exe"
+$ZipPath = Join-Path $OutDir "Countdown-v$Version-windows-portable.zip"
 
 if (Test-Path $OutDir) {
   Remove-Item $OutDir -Recurse -Force

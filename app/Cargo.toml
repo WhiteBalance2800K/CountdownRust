@@ -1,0 +1,25 @@
+[package]
+name = "countdown"
+version = "0.9.2"
+description = "A local-first cross-platform countdown tracker."
+authors = ["WhiteBalance2800K"]
+edition = "2021"
+
+[lib]
+name = "countdown_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+slint-build = "1.16.1"
+
+[dependencies]
+slint = "1.16.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4.44", features = ["serde", "clock"] }
+uuid = { version = "1.23.1", features = ["serde", "v4"] }
+dirs = "6.0.0"
+reqwest = { version = "0.13.3", features = ["blocking"] }
+opener = "0.8.4"
+auto-launch = "0.6.0"
+dark-light = "2.0.0"

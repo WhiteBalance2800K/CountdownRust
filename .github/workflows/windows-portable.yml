@@ -1,8 +1,5 @@
 name: Build Windows Portable
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 on:
   workflow_dispatch:
   push:
@@ -10,14 +7,9 @@ on:
       - main
     paths:
       - ".github/workflows/windows-portable.yml"
-      - "index.html"
-      - "package-lock.json"
-      - "package.json"
+      - "README.md"
       - "scripts/package-windows-portable.ps1"
-      - "src/**"
-      - "src-tauri/**"
-      - "tsconfig*.json"
-      - "vite.config.ts"
+      - "app/**"
   pull_request:
     branches:
       - main
@@ -35,44 +27,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-
-      - name: Install dependencies
-        run: npm ci
+          workspaces: app
 
       - name: Read package version
         id: package
         shell: pwsh
         run: |
-          $version = node -p "require('./package.json').version"
-          $minor = $version -replace '\.0$', ''
+          $manifest = "app/Cargo.toml"
+          $version = (Select-String -Path $manifest -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
           "version=$version" >> $env:GITHUB_OUTPUT
-          "minor=$minor" >> $env:GITHUB_OUTPUT
 
       - name: Run tests
-        run: npm test
+        run: cargo test --manifest-path app/Cargo.toml
 
       - name: Build portable zip
         shell: pwsh
-        run: npm run package:windows
+        run: powershell -ExecutionPolicy Bypass -File scripts/package-windows-portable.ps1
 
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Countdown-v${{ steps.package.outputs.minor }}-windows-portable
-          path: dist-packages/windows/Countdown-v${{ steps.package.outputs.minor }}-windows-portable.zip
+          name: Countdown-v${{ steps.package.outputs.version }}-windows-portable
+          path: dist-packages/windows/Countdown-v${{ steps.package.outputs.version }}-windows-portable.zip
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -83,12 +65,17 @@ jobs:
         run: |
           $version = "${{ steps.package.outputs.version }}"
           $tag = "v$version"
-          $minor = "${{ steps.package.outputs.minor }}"
-          $asset = "dist-packages/windows/Countdown-v$minor-windows-portable.zip"
+          $asset = "dist-packages/windows/Countdown-v$version-windows-portable.zip"
           $notes = @"
           ## 下载
 
-          - Windows portable: Countdown-v$minor-windows-portable.zip
+          - Windows portable: Countdown-v$version-windows-portable.zip
+
+          ## v$version
+
+          - 使用 Slint 重构为原生 Rust 桌面 UI，不再使用 WebView/网页前端
+          - 保留本地 JSON 数据、备份恢复、Bark 推送和开机启动设置
+          - Windows workflow 自动打包并发布 Release
 
           ## 验证
 
