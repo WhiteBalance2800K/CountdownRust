@@ -369,6 +369,16 @@ p {
   opacity: 0.72;
 }
 
+.countdown-card.manual-order,
+.countdown-card.manual-order .card-main {
+  cursor: grab;
+}
+
+.countdown-card.manual-order:active,
+.countdown-card.manual-order:active .card-main {
+  cursor: grabbing;
+}
+
 @media (hover: hover) {
   .countdown-card:hover {
     border-color: var(--line-strong);

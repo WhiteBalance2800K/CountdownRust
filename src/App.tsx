@@ -154,6 +154,7 @@ const copy = {
     customReminderInput: "提前天数",
     customReminderOffsets: "自定义提醒天数",
     customReminderOffsetsHelp: "已启用：{offsets}",
+    noReminderOffsets: "未选择时默认使用 7 天和当天",
     data: "数据",
     dataRecoveredMessage: "检测到 items.json 损坏，已自动备份损坏文件，并从最近的有效备份恢复。",
     dataRecoveredTitle: "已恢复倒计时数据",
@@ -238,6 +239,7 @@ const copy = {
     customReminderInput: "Days before",
     customReminderOffsets: "Custom reminder days",
     customReminderOffsetsHelp: "Enabled: {offsets}",
+    noReminderOffsets: "Defaults to 7 days and due day when empty",
     data: "Data",
     dataRecoveredMessage: "Countdown backed up a damaged items.json file and restored from the latest valid backup.",
     dataRecoveredTitle: "Countdown data restored",
@@ -446,6 +448,7 @@ function App() {
 
   function handleCardDrop(targetId: string, event: DragEvent<HTMLElement>) {
     event.preventDefault();
+    event.stopPropagation();
     if (!draggedId) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const placement = event.clientY > bounds.top + bounds.height / 2 ? "after" : "before";
@@ -654,8 +657,20 @@ function CountdownCard(props: {
 
   return (
     <article
-      className={`countdown-card ${urgency} ${isDragging ? "dragging" : ""}`}
-      onDragOver={(event) => props.manualOrder && event.preventDefault()}
+      className={`countdown-card ${urgency} ${props.manualOrder ? "manual-order" : ""} ${isDragging ? "dragging" : ""}`}
+      draggable={props.manualOrder}
+      onDragStart={(event) => {
+        if (!props.manualOrder) return;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", props.item.id);
+        props.onDragStart();
+      }}
+      onDragEnd={props.onDragEnd}
+      onDragOver={(event) => {
+        if (!props.manualOrder) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
       onDrop={props.onDrop}
     >
       <button type="button" className="card-main" onClick={props.onEdit}>
@@ -666,7 +681,9 @@ function CountdownCard(props: {
               draggable
               title={text("adjust", props.language)}
               onDragStart={(event) => {
+                event.stopPropagation();
                 event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", props.item.id);
                 props.onDragStart();
               }}
               onDragEnd={props.onDragEnd}
@@ -703,7 +720,6 @@ function CountdownCard(props: {
               {repeatLabel(props.item.repeatRule, props.language)}
             </span>
           ) : null}
-          <span>{days < 0 ? text("overdue", props.language) : days === 0 ? text("today", props.language) : daysText(days, props.language)}</span>
         </div>
       </button>
 
@@ -754,6 +770,8 @@ function ItemEditor(props: {
   const [repeatCustomDays, setRepeatCustomDays] = useState(item?.repeatCustomDays ?? 30);
   const [isArchived, setIsArchived] = useState(item?.isArchived ?? false);
   const parsedOffsets = normalizeOffsetList(offsets);
+  const saveOffsets = parsedOffsets.length ? parsedOffsets : [7, 0];
+  const customSelectedOffsets = parsedOffsets.filter((days) => !reminderPresets.includes(days));
   const expiryIso = inputMode === "date" ? isoFromDateInput(dateValue) : isoFromRemainingDays(remaining);
   const previewDays = daysUntilIso(expiryIso);
 
@@ -769,7 +787,7 @@ function ItemEditor(props: {
       createdAt: item?.createdAt ?? nowIso,
       updatedAt: nowIso,
       note: note.trim(),
-      reminderOffsets: parsedOffsets,
+      reminderOffsets: saveOffsets,
       category: category.trim(),
       link: link.trim(),
       isArchived,
@@ -854,7 +872,7 @@ function ItemEditor(props: {
           <span>{text("customReminderOffsets", props.language)}</span>
           <div className="reminder-picker">
             <div className="reminder-chips" aria-label={text("customReminderOffsets", props.language)}>
-              {reminderPresets.map((days) => {
+              {[...customSelectedOffsets, ...reminderPresets].map((days) => {
                 const selected = parsedOffsets.includes(days);
                 return (
                   <button
@@ -885,14 +903,24 @@ function ItemEditor(props: {
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setOffsets(normalizeOffsetList([...parsedOffsets, customOffset]))}
+                onClick={() => {
+                  setOffsets(
+                    parsedOffsets.includes(customOffset)
+                      ? parsedOffsets.filter((offset) => offset !== customOffset)
+                      : normalizeOffsetList([...parsedOffsets, customOffset]),
+                  );
+                }}
               >
                 <Plus size={14} aria-hidden />
                 {text("customReminderAdd", props.language)}
               </button>
             </div>
           </div>
-          <small>{text("customReminderOffsetsHelp", props.language).replace("{offsets}", parsedOffsets.join(", "))}</small>
+          <small>
+            {parsedOffsets.length
+              ? text("customReminderOffsetsHelp", props.language).replace("{offsets}", parsedOffsets.join(", "))
+              : text("noReminderOffsets", props.language)}
+          </small>
         </label>
 
         <div className="two-column compact">
@@ -1236,8 +1264,7 @@ function normalizeOffsetList(offsets: number[]) {
   const values = offsets
     .filter((part) => Number.isFinite(part))
     .map((part) => Math.max(0, Math.min(3650, Math.round(part))));
-  const unique = [...new Set(values)].sort((a, b) => b - a);
-  return unique.length ? unique : [7, 0];
+  return [...new Set(values)].sort((a, b) => b - a);
 }
 
 function nextRenewedItem(item: CountdownItem): CountdownItem | null {
