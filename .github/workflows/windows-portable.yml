@@ -52,6 +52,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read package version
+        id: package
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $minor = $version -replace '\.0$', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "minor=$minor" >> $env:GITHUB_OUTPUT
+
       - name: Run tests
         run: npm test
 
@@ -62,8 +71,8 @@ jobs:
       - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Countdown-v0.9-windows-portable
-          path: dist-packages/windows/Countdown-v0.9-windows-portable.zip
+          name: Countdown-v${{ steps.package.outputs.minor }}-windows-portable
+          path: dist-packages/windows/Countdown-v${{ steps.package.outputs.minor }}-windows-portable.zip
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -72,9 +81,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = node -p "require('./package.json').version"
+          $version = "${{ steps.package.outputs.version }}"
           $tag = "v$version"
-          $minor = $version -replace '\.0$', ''
+          $minor = "${{ steps.package.outputs.minor }}"
           $asset = "dist-packages/windows/Countdown-v$minor-windows-portable.zip"
           $notes = @"
           ## 下载
