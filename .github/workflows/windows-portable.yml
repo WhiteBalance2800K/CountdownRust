@@ -1,4 +1,4 @@
-name: Build Windows Portable
+name: Build Desktop Packages
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/windows-portable.yml"
       - "README.md"
+      - "scripts/package-macos.sh"
       - "scripts/package-windows-portable.ps1"
       - "app/**"
   pull_request:
@@ -22,6 +23,8 @@ jobs:
     name: Windows portable package
     runs-on: windows-latest
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.package.outputs.version }}
 
     steps:
       - name: Checkout
@@ -57,35 +60,107 @@ jobs:
           path: dist-packages/windows/Countdown-v${{ steps.package.outputs.version }}-windows-portable.zip
           if-no-files-found: error
 
+  macos-app:
+    name: macOS app package
+    runs-on: macos-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+
+      - name: Read package version
+        id: package
+        shell: bash
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: cargo test --manifest-path app/Cargo.toml
+
+      - name: Build macOS app zip
+        run: bash scripts/package-macos.sh
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Countdown-v${{ steps.package.outputs.version }}-macOS
+          path: dist-packages/macos/Countdown-v${{ steps.package.outputs.version }}-macOS.zip
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - windows-portable
+      - macos-app
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+
       - name: Publish GitHub release
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = "${{ steps.package.outputs.version }}"
-          $tag = "v$version"
-          $asset = "dist-packages/windows/Countdown-v$version-windows-portable.zip"
-          $notes = @"
+          version="${{ needs.windows-portable.outputs.version }}"
+          macos_version="${{ needs.macos-app.outputs.version }}"
+          if [ "$version" != "$macos_version" ]; then
+            echo "Windows version ($version) does not match macOS version ($macos_version)."
+            exit 1
+          fi
+
+          tag="v$version"
+          windows_asset="$(find dist-release -name "Countdown-v$version-windows-portable.zip" -print -quit)"
+          macos_asset="$(find dist-release -name "Countdown-v$version-macOS.zip" -print -quit)"
+
+          if [ ! -f "$windows_asset" ]; then
+            echo "Missing Windows package artifact."
+            exit 1
+          fi
+
+          if [ ! -f "$macos_asset" ]; then
+            echo "Missing macOS package artifact."
+            exit 1
+          fi
+
+          cat > release-notes.md <<NOTES
           ## 下载
 
           - Windows portable: Countdown-v$version-windows-portable.zip
+          - macOS app: Countdown-v$version-macOS.zip
 
           ## v$version
 
-          - 使用 Slint 重构为原生 Rust 桌面 UI，不再使用 WebView/网页前端
-          - 保留本地 JSON 数据、备份恢复、Bark 推送和开机启动设置
-          - Windows workflow 自动打包并发布 Release
+          - 使用 Slint 原生 Rust 桌面 UI
+          - 自动打包 Windows portable 和 macOS app
+          - GitHub Actions 构建完成后自动上传 Release
 
           ## 验证
 
-          - GitHub Actions: Build Windows Portable 通过
+          - GitHub Actions: Build Desktop Packages 通过
           - Commit: ${{ github.sha }}
-          "@
+          NOTES
 
-          gh release view $tag --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $asset --repo "${{ github.repository }}" --clobber
-          } else {
-            gh release create $tag $asset --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Countdown $tag" --notes $notes
-          }
+          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release edit "$tag" --repo "${{ github.repository }}" --notes-file release-notes.md
+            gh release upload "$tag" "$windows_asset" "$macos_asset" --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$tag" "$windows_asset" "$macos_asset" --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Countdown $tag" --notes-file release-notes.md
+          fi
