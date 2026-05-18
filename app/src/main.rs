@@ -457,8 +457,8 @@ fn to_ui_item(item: &CountdownItem) -> UiItem {
         note: item.note.clone().into(),
         archived: item.is_archived,
         repeat: repeat_label(item.repeat_rule).into(),
-        urgent: (0..15).contains(&days),
-        warning: (15..=30).contains(&days),
+        urgent: days <= 15,
+        warning: (16..=30).contains(&days),
         status: item_status(item, days),
         status_label: status_label(item, days).into(),
         ring_path: ring_path(item, days).into(),
@@ -469,8 +469,8 @@ fn item_status(item: &CountdownItem, days: i64) -> i32 {
     if item.is_archived {
         4
     } else if days < 0 {
-        0
-    } else if days < 15 {
+        1
+    } else if days <= 15 {
         1
     } else if days <= 30 {
         2
@@ -504,13 +504,20 @@ fn countdown_progress(item: &CountdownItem, days: i64) -> f64 {
     if item.is_archived {
         return 0.0;
     }
-    if days <= 0 {
-        return 1.0;
+    if days < 0 {
+        return 0.0;
+    }
+    if days == 0 {
+        return 0.02;
     }
 
     let total = (item.expiry_date - item.created_at).num_days().max(1) as f64;
     let remaining = days.max(0) as f64;
-    (1.0 - remaining / total).clamp(0.08, 0.96)
+    if remaining >= total {
+        return 1.0;
+    }
+
+    (remaining / total).clamp(0.02, 0.98)
 }
 
 fn arc_path(progress: f64) -> String {
